@@ -50,10 +50,12 @@ typedef enum {
   /** Temperature measurement timer.
    *  This is an auto-reload timer used for timing temperature measurements. */
   TEMP_TIMER,
+  MEAS_TIMER,
   /** Display Polarity Inversion Timer
   * Timer for toggling the the EXTCOMIN signal, which prevents building up a DC bias
      within the Sharp memory LCD panel */
   DISP_POL_INV_TIMER
+
 } appTimer_t;
 
 /** @} (end addtogroup app) */

@@ -12,6 +12,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include <time.h>
 
 /* BG stack headers */
 #include "bg_types.h"
@@ -26,6 +27,10 @@
 
 /* Own header*/
 #include "htm.h"
+
+/* Additional headers */
+#include "adc.h"
+
 
 /***********************************************************************************************//**
  * @addtogroup Services
@@ -102,15 +107,16 @@
 /** Default maximum payload length for most PDUs. */
 #define ATT_DEFAULT_PAYLOAD_LEN             20
 /** Temperature measurement period in ms. */
-#define HTM_TEMP_IND_TIMEOUT                10
+#define HTM_TEMP_IND_TIMEOUT               	10
 /** Indicates currently there is no active connection using this service. */
 #define HTM_NO_CONNECTION                   0xFF
 
 #define HTM_FREQ_VALUE_TEXT                 "CH0 Freq:\n %7lu.%1dHz\nCH1 Freq:\n %7lu.%1dHz\nret:%5d"
 #define HTM_FREQ_VALUE_TEXT_DEFAULT         "CH0 Freq:\n -------.-Hz\nCH1 Freq:\n -------.-Hz\nret:-----"
 #define HTM_FREQ_VALUE_TEXT_SIZE            (sizeof(HTM_FREQ_VALUE_TEXT_DEFAULT))
+#define HTM_TIME_VALUE_TEXT					"Time:%5lu\n"
 
-#define HRM_FLAG_HR_UINT_16                 0x01
+#define HRM_FLAG_HR_UINT_16                 0x19
 /***************************************************************************************************
  * Local Type Definitions
  **************************************************************************************************/
@@ -141,8 +147,16 @@ typedef struct {
 /** Heart rate measurement structure. */
 typedef struct {
   uint8_t flags;           /**< Flags */
-  uint16_t hr;    /**< Heart rate */
+  uint16_t hr;			   /**< Heart rate */
+  uint16_t bit;
+  uint16_t adc;
+  //uint16_t time;
+  //uint16_t combo;
 } hrMeas_t;
+
+float testprint;
+
+
 /***************************************************************************************************
  * Local Variables
  **************************************************************************************************/
@@ -156,11 +170,12 @@ static hrMeas_t hrMeas = {
   .flags =  HRM_FLAG_HR_UINT_16
 };
 static uint8_t sps = 0;
-static uint16_t idx = 0;
+//static uint16_t idx = 0;
 static uint16_t millisec = 0;
-static int32_t data[1000] = {0};
-static int32_t xcorrData[1000] = {0};
-static int32_t offset = 0;
+
+//static int32_t data[1000] = {0};
+//static int32_t xcorrData[1000] = {0};
+//static int32_t offset = 0;
 
 /* timestamp */
 static htmDateTime_t htmDateTime = { 2018, /*! Year, 0 means not known */
@@ -189,8 +204,13 @@ static uint8_t htmProcMsg(uint8_t *buf);
 void htmInit(void)
 {
   htmClientConnection = HTM_NO_CONNECTION; /* Initially no connection is set. */
-  gecko_cmd_hardware_set_soft_timer(TIMER_STOP, TEMP_TIMER, true); /* Initially stop the timer. */
+  //gecko_cmd_hardware_set_soft_timer(TIMER_STOP, TEMP_TIMER, true);/* Initially stop the timer. */
+  gecko_cmd_hardware_set_soft_timer(TIMER_STOP, MEAS_TIMER, false);
+  //start = clock();
+  millisec = 0;
+  //hrMeas.time = 0;
 }
+
 
 /***********************************************************************************************//**
  *  \brief Function that is called when the temperature characteristic status is changed.
@@ -202,37 +222,43 @@ void htmTemperatureCharStatusChange(uint8_t connection, uint16_t clientConfig)
   if (clientConfig) {
     htmClientConnection = connection; /* Save connection ID */
     //htmTemperatureMeasure(); /* Make an initial measurement */
-    htmFrequencyMeasure();
+    //start = clock();
+    //htmFrequencyMeasure();
+	//measTick();
+	gecko_cmd_hardware_set_soft_timer(TIMER_MS_2_TIMERTICK(htmTempMeas.period), MEAS_TIMER, false);
+
   } else {
-    gecko_cmd_hardware_set_soft_timer(TIMER_STOP, TEMP_TIMER, true);
+    //gecko_cmd_hardware_set_soft_timer(TIMER_STOP, TEMP_TIMER, true);
+	gecko_cmd_hardware_set_soft_timer(TIMER_STOP, MEAS_TIMER, false);
+
   }
 }
 
 /***********************************************************************************************//**
  *  \brief Function for taking a single temperature measurement with the WSTK Temperature sensor.
  **************************************************************************************************/
-void htmTemperatureMeasure(void)
-{
-  uint8_t htmTempBuffer[ATT_DEFAULT_PAYLOAD_LEN]; /* Stores the temperature data in the HTM format. */
-  uint8_t length; /* Length of the temperature measurement characteristic */
+//void htmTemperatureMeasure(void)
+//{
+  //uint8_t htmTempBuffer[ATT_DEFAULT_PAYLOAD_LEN]; /* Stores the temperature data in the HTM format. */
+  //uint8_t length; /* Length of the temperature measurement characteristic */
 
   /* Check if the connection is still open */
-  if (HTM_NO_CONNECTION == htmClientConnection) {
-    return;
-  }
+  //if (HTM_NO_CONNECTION == htmClientConnection) {
+  //  return;
+  //}
 
   /* Create the temperature measurement characteristic in htmTempBuffer and store its length */
-  length = htmProcMsg(htmTempBuffer);
+  //length = htmProcMsg(htmTempBuffer);
 
   /* Send indication of the temperature in htmTempBuffer to all "listening" clients.
    * This enables the Health Thermometer in the Blue Gecko app to display the temperature.
    *  0xFF as connection ID will send indications to all connections. */
-  gecko_cmd_gatt_server_send_characteristic_notification(
-    htmClientConnection, gattdb_temperature_measurement, length, htmTempBuffer);
+  //gecko_cmd_gatt_server_send_characteristic_notification(
+    //htmClientConnection, gattdb_temperature_measurement, length, htmTempBuffer);
 
   /* Start the repeating timer */
-  gecko_cmd_hardware_set_soft_timer(TIMER_MS_2_TIMERTICK(htmTempMeas.period), TEMP_TIMER, true);
-}
+  //gecko_cmd_hardware_set_soft_timer(TIMER_MS_2_TIMERTICK(htmTempMeas.period), TEMP_TIMER, true);
+//}
 
 /***************************************************************************************************
  * Static Function Definitions
@@ -248,7 +274,7 @@ static uint8_t htmBuildTempMeas(uint8_t *pBuf, htmTempMeas_t *pTempMeas)
 {
   uint8_t *p = pBuf;
   uint8_t flags = pTempMeas->flags;
-
+#ifdef need
   /* Convert HTM flags to bitstream and append them in the HTM temperature data buffer */
   UINT8_TO_BITSTREAM(p, flags);
 
@@ -269,6 +295,7 @@ static uint8_t htmBuildTempMeas(uint8_t *pBuf, htmTempMeas_t *pTempMeas)
   if (flags & HTM_FLAG_TEMP_TYPE_PRESENT) {
     UINT8_TO_BITSTREAM(p, pTempMeas->tempType);
   }
+#endif
 
   /* Return length of data to be sent */
   return (uint8_t)(p - pBuf);
@@ -284,6 +311,15 @@ static uint8_t hrmBuildHrMeas(uint8_t *pBuf, hrMeas_t *pHrMeas)
   /* Convert temperature measurement value to bitstream */
   UINT16_TO_BITSTREAM(p, pHrMeas->hr);
 
+  /* Convert second variable to bitstream */
+  UINT16_TO_BITSTREAM(p, pHrMeas->bit);
+
+  /* Convert time variable to bitstream */
+  //UINT16_TO_BITSTREAM(p, pHrMeas->time);
+
+  /* Convert ADC value to bitstream */
+  UINT16_TO_BITSTREAM(p, pHrMeas->adc);
+
   /* Return length of data to be sent */
   return (uint8_t)(p - pBuf);
 }
@@ -292,36 +328,36 @@ static uint8_t hrmBuildHrMeas(uint8_t *pBuf, hrMeas_t *pHrMeas)
  *  \param[in]  buf  Event message.
  *  \return  length of temp measurement.
  **************************************************************************************************/
-static uint8_t htmProcMsg(uint8_t *buf)
-{
-  uint8_t len; /* Length of the temperature measurement */
-  float tempC; /* Temperature in right format for the LCD */
-  float tempF; /* Temperature in deg F*/
-  float rh;    // Relative humidity in %
-  char tempString[HTM_TEMP_VALUE_TEXT_SIZE]; /* Temperature as string for the LCD */
-  int32_t tempData; /* Temperature data from the sensor */
-  uint32_t rhData; // Relative humidity data from the sensor
+//static uint8_t htmProcMsg(uint8_t *buf)
+//{
+  //uint8_t len; /* Length of the temperature measurement */
+  //float tempC; /* Temperature in right format for the LCD */
+  //float tempF; /* Temperature in deg F*/
+  //float rh;    // Relative humidity in %
+  //char tempString[HTM_TEMP_VALUE_TEXT_SIZE]; /* Temperature as string for the LCD */
+  //int32_t tempData; /* Temperature data from the sensor */
+  //uint32_t rhData; // Relative humidity data from the sensor
 
   /* Read temperature and check if read successfully */
-  if (appHwReadTm(&tempData, &rhData) == 0) {
+  //if (appHwReadTm(&tempData, &rhData) == 0) {
     /* The temperature read from the sensor is in milli-Celsius format */
-    if (HTM_FLAG_TEMP_UNIT_F == (htmTempMeas.flags & HTM_FLAG_TEMP_UNIT_MASK)) {
+    //if (HTM_FLAG_TEMP_UNIT_F == (htmTempMeas.flags & HTM_FLAG_TEMP_UNIT_MASK)) {
       /* Conversion to Fahrenheit: F = C * 1.8 + 32
        * Here multiplying with 18 instead of 1.8 will make the result 10^4 (e4) */
-      int32_t temp_e4 = tempData * 18 + 320000;
-      htmTempMeas.temperature = FLT_TO_UINT32(temp_e4, -4);
-    } else {
-      htmTempMeas.temperature = FLT_TO_UINT32(tempData, -3);
-    }
-  }
+      //int32_t temp_e4 = tempData * 18 + 320000;
+      //htmTempMeas.temperature = FLT_TO_UINT32(temp_e4, -4);
+    //} else {
+      //htmTempMeas.temperature = FLT_TO_UINT32(tempData, -3);
+    //}
+  //}
 
   /* Convert temperature to the right format for LCD display */
-  tempC = tempData / 1000.0;
+  /*tempC = tempData / 1000.0;
   tempF = (tempC * 1.8f) + 32.0f;
-  rh = rhData / 1000.0;
+  rh = rhData / 1000.0;*/
 
   /* Temp in C and F should both appear on LCD display */
-  snprintf(tempString,
+  /*snprintf(tempString,
            sizeof(HTM_TEMP_VALUE_TEXT_DEFAULT),
            HTM_TEMP_VALUE_TEXT,
            (uint8_t)(tempC),
@@ -329,16 +365,16 @@ static uint8_t htmProcMsg(uint8_t *buf)
            (uint8_t)(tempF),
            FLOAT_FRACTION_1STDIGIT(tempF),
 		   (uint8_t)(rh),
-		   FLOAT_FRACTION_1STDIGIT(rh));
+		   FLOAT_FRACTION_1STDIGIT(rh));*/
 
   /* Write the string to LCD */
-  appUiWriteString(tempString);
+  //appUiWriteString(tempString);
 
   /* Set the timestamp */
-  htmTempMeas.timestamp = htmDateTime;
+  //htmTempMeas.timestamp = htmDateTime;
 
   /* Increment Seconds and Minutes fields to simulate time */
-  htmDateTime.tm_sec += htmTempMeas.period / 1000;
+  /*htmDateTime.tm_sec += htmTempMeas.period / 1000;
   if (htmDateTime.tm_sec > 59) {
     htmDateTime.tm_sec = 0;
     if (htmDateTime.tm_min > 59) {
@@ -353,16 +389,16 @@ static uint8_t htmProcMsg(uint8_t *buf)
     else {
     	htmDateTime.tm_min = htmDateTime.tm_min + 1;
     }
-  }
+  }*/
 
   /* Set temperature type */
-  htmTempMeas.tempType = HTM_TT;
+  //htmTempMeas.tempType = HTM_TT;
   /* Build temperature measurement characteristic and store data length */
-  len = htmBuildTempMeas(buf, &htmTempMeas);
+  //len = htmBuildTempMeas(buf, &htmTempMeas);
 
   /* Return the length of the data */
-  return len;
-}
+  //return len;
+//}
 
 /** @} (end addtogroup htm) */
 /** @} (end addtogroup Services) */
@@ -376,81 +412,51 @@ static uint8_t htmProcMsg(uint8_t *buf)
  **************************************************************************************************/
 static uint8_t htmFreqMsg(uint8_t *buf)
 {
-  uint8_t len = 0, firstXing = 0; /* Length of the temperature measurement */
+  uint8_t len = 0; /* Length of the temperature measurement */
   float freqFLT0 = 0, freqFLT1 = 0; /* Sensor resonant frequency in Hz for the LCD */
   char freqString[HTM_FREQ_VALUE_TEXT_SIZE]; /* Sensor resonant frequency as string for the LCD */
-  uint32_t freqData0 = 0, freqData1 = 0, MX25ID = 0;
-  int32_t sum = 0, thres = 0;
+  uint32_t freqData0 = 0, freqData1 = 0;
 
   /* Convert temperature to the right format for LCD display */
   /* Read temperature and check if read successfully */
   if (appHwReadFreq(&freqData0, &freqData1) == 0) {
 	  freqFLT0 = freqData0 * 0.149f;
 	  freqFLT1 = freqData1 * 0.149f;
-    if (HTM_FLAG_TEMP_UNIT_F == (htmTempMeas.flags & HTM_FLAG_TEMP_UNIT_MASK)) {
-      /* Conversion to Fahrenheit: F = C * 1.8 + 32
-       * Here multiplying with 18 instead of 1.8 will make the result 10^4 (e4) */
+    /*if (HTM_FLAG_TEMP_UNIT_F == (htmTempMeas.flags & HTM_FLAG_TEMP_UNIT_MASK)) {
+       * Conversion to Fahrenheit: F = C * 1.8 + 32
+       * Here multiplying with 18 instead of 1.8 will make the result 10^4 (e4)
     	htmTempMeas.temperature = FLT_TO_UINT32((freqData0 & 0xFFFF0000U) >> 16, 0);
     } else {
     	htmTempMeas.temperature = FLT_TO_UINT32(freqData0 & 0x0000FFFFU, 0);
-    }
+    }*/
+
   }
 
-  hrMeas.hr = (uint16_t)((freqData0 - 0x00100000U) >> 4);
+  //hrMeas.hr = (uint16_t)((freqData0 - 0x00100000U) >> 4);
 
-  //ret = appHwReadFlash(&MX25ID);
+  //Split
+  hrMeas.hr = (uint16_t) (freqData0 >> 16);
+  hrMeas.bit = (uint16_t) (freqData0 & 0x0000FFFFU);
 
   /* Set the timestamp */
-  htmTempMeas.timestamp = htmDateTime;
+  //htmTempMeas.timestamp = htmDateTime;
+  //seconds = time(NULL);
+  //hrMeas.time = (uint16_t) seconds;
 
   /* Increment Seconds and Minutes fields to simulate time */
   //htmDateTime.tm_sec += htmTempMeas.period / 1000;
-  millisec += htmTempMeas.period;
+#ifdef need
   if (millisec > 999){
-	    snprintf(freqString, sizeof("SPS:-----"), "SPS:%5d", sps);
-	    appUiWriteString(freqString);
+	    //snprintf(freqString, sizeof("SPS:-----"), "SPS:%5d", sps);
+	    //appUiWriteString(freqString);
 	    sps = 0;
-	    millisec = 0;
+	    //millisec = 0;
 	    htmDateTime.tm_sec += 1;
   }
   else {
 	  sps += 1;
   }
-/*
-  if (idx == 0) {
-	  for (int i=0;i<1000;i++){
-		  offset += data[i]/1000;
-	  }
-	  for (int i=0;i<1000;i++){
-		  data[i] -= offset; // removes the DC offset from the data array
-	  }
-	  for (int i=0;i<1000;i++){
-		  sum = 0;
-		  for (int j=0;j<1000-i;j++){
-			  sum += data[i] * data[i+j]; // computes the autocorrelation
-		  }
-		  xcorrData[1000-i] = sum;
-	  }
-	  thres = xcorrData[0] / 3; // threshold for local maximum
-	  for (int i=0;i<1000;i++){
-		  if (xcorrData[i] < 0) {
-			  firstXing = i; // first zero crossing index
-			  break;
-		  }
-	  }
-	  for (int i=32;i<150;i++){ // assuming heart rate period is greater than 320ms (186BPM) but smaller than 1500ms (40BPM)
-		  if (i>firstXing && xcorrData[i]>thres) { // local maximum
-			  hrMeas.hr = 6000 / i;
-			  break;
-		  }
-	  }
-	  offset = 0;
-	  idx = 0;
-  }
-  else {
-	  idx += 1;
-  }
-*/
+
   if (htmDateTime.tm_sec > 59) {
     htmDateTime.tm_sec = 0;
     if (htmDateTime.tm_min > 59) {
@@ -476,19 +482,20 @@ static uint8_t htmFreqMsg(uint8_t *buf)
 
 
   /* Resonator frequency for Ch0 & CH1 should both appear on LCD display */
-  /*
-  snprintf(freqString,
+
+  /*snprintf(freqString,
            sizeof(HTM_FREQ_VALUE_TEXT_DEFAULT),
            HTM_FREQ_VALUE_TEXT,
 		   (uint32_t)freqFLT0,
            FLOAT_FRACTION_1STDIGIT(freqFLT0),
 		   (uint32_t)freqFLT1,
            FLOAT_FRACTION_1STDIGIT(freqFLT1),
-		   len);
-  */
+		   len);*/
+
   /* Write the string to LCD */
   //appUiWriteString(freqString);
   /* Return the length of the data */
+#endif
   return len;
 }
 
@@ -497,8 +504,9 @@ static uint8_t htmFreqMsg(uint8_t *buf)
  **************************************************************************************************/
 void htmFrequencyMeasure(void)
 {
+  //start = clock();
   uint8_t htmFreqBuffer[ATT_DEFAULT_PAYLOAD_LEN]; /* Stores the temperature data in the HTM format. */
-  uint8_t hrmBuffer[8];
+  uint8_t hrmBuffer[12];
   uint8_t length, length2; /* Length of the temperature measurement characteristic */
 
   /* Check if the connection is still open */
@@ -509,16 +517,59 @@ void htmFrequencyMeasure(void)
   /* Create the temperature measurement characteristic in htmTempBuffer and store its length */
   length = htmFreqMsg(htmFreqBuffer);
   length2 = hrmBuildHrMeas(hrmBuffer, &hrMeas);
+  //hrMeas.time = millisec;
+  //hrMeas.adc = adcValue;
+
+  adcSingleScan(false);
+
+  //hrMeas.combo = (hrMeas.time << 8) | hrMeas.adc;
+
+#ifdef print
+  testprint = ((float)hrMeas.adc * ADC_SE_VFS)/ 4096;
+  char *tmpSign = (testprint < 0) ? "-" : "";
+  float tmpVal = (testprint < 0) ? -testprint : testprint;
+
+  int tmpInt1 = tmpVal;                  // Get the integer (678).
+  float tmpFrac = tmpVal - tmpInt1;      // Get fraction (0.0123).
+  int tmpInt2 = trunc(tmpFrac * 10000);  // Turn into integer (123).
+
+    // Print as parts, note that you need 0-padding for fractional bit.
+
+  char sampled[100];
+  sprintf (sampled, "Single PA0: = %s%d.%04dV\n", tmpSign, tmpInt1, tmpInt2);
+  appUiWriteString(sampled);
+#endif
+
+  //char time[32];
+  //snprintf(time, sizeof(HTM_TIME_VALUE_TEXT),HTM_TIME_VALUE_TEXT, millisec);
+  //appUiWriteString(time);
 
   /* Send indication of the temperature in htmTempBuffer to all "listening" clients.
    * This enables the Health Thermometer in the Blue Gecko app to display the temperature.
    *  0xFF as connection ID will send indications to all connections. */
-  //if (millisec % 20 == 0){
-  //gecko_cmd_gatt_server_send_characteristic_notification(
-   // htmClientConnection, gattdb_temperature_measurement, length, htmFreqBuffer);
+  /*if (millisec % 20 == 0){
+	  gecko_cmd_gatt_server_send_characteristic_notification(
+			  htmClientConnection, gattdb_temperature_measurement, length, htmFreqBuffer);
+  }*/
+
+  //gecko_cmd_hardware_set_soft_timer(TIMER_MS_2_TIMERTICK(htmTempMeas.period), MEAS_TIMER, true);
+
+
   gecko_cmd_gatt_server_send_characteristic_notification(
       htmClientConnection, gattdb_heart_rate_measurement, length2, hrmBuffer);
-  //}
+
+
   /* Start the repeating timer */
-  gecko_cmd_hardware_set_soft_timer(TIMER_MS_2_TIMERTICK(htmTempMeas.period), TEMP_TIMER, true);
+	//gecko_cmd_hardware_set_soft_timer(TIMER_MS_2_TIMERTICK(htmTempMeas.period), MEAS_TIMER, true);
+}
+
+void getADCValue(uint32_t sample) {
+	hrMeas.adc = (uint16_t)sample;
+}
+
+void measTick(void)
+{
+	millisec = millisec + htmTempMeas.period;
+	//gecko_cmd_hardware_set_soft_timer(TIMER_MS_2_TIMERTICK(htmTempMeas.period), MEAS_TIMER, true);
+	htmFrequencyMeasure();
 }

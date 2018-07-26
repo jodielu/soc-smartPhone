@@ -46,7 +46,9 @@ void initMcu(void)
   // Set up clocks
   initMcu_clocks();
 
+#ifdef TEST
   RTCC_Init_TypeDef rtccInit = RTCC_INIT_DEFAULT;
+
   rtccInit.enable                = true;
   rtccInit.debugRun              = false;
   rtccInit.precntWrapOnCCV0      = false;
@@ -56,6 +58,7 @@ void initMcu(void)
   rtccInit.enaOSCFailDetect      = false;
   rtccInit.cntMode               = rtccCntModeNormal;
   RTCC_Init(&rtccInit);
+#endif
 
 #if defined(_EMU_CMD_EM01VSCALE0_MASK)
   // Set up EM0, EM1 energy mode configuration

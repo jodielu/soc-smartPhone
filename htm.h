@@ -45,7 +45,6 @@ extern "C" {
  *  and stop temperature measurement timer.
  **************************************************************************************************/
 void htmInit(void);
-
 /***********************************************************************************************//**
  *  \brief  Temperature CCCD has changed event handler function.
  *  \param[in]  connection  Connection ID.
@@ -59,6 +58,10 @@ void htmTemperatureCharStatusChange(uint8_t connection, uint16_t clientConfig);
 void htmTemperatureMeasure(void);
 
 void htmFrequencyMeasure(void);
+
+void measTick(void);
+
+void getADCValue(uint32_t sample);
 
 /** @} (end addtogroup htm) */
 /** @} (end addtogroup Services) */

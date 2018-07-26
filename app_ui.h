@@ -106,7 +106,7 @@ void appUiLedHighAlert(void);
  *  \brief  Initialize buttons, graphics on the LCD and start repeating timer.
  *  \param[in]  devId  device ID
  **************************************************************************************************/
-void appUiInit(uint16 devId);
+void appUiInit(uint16_t devId);
 
 /***********************************************************************************************//**
  *  \brief  Periodic call for User Interface specific functions.

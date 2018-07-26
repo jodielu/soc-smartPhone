@@ -40,6 +40,7 @@
 /* Own header */
 #include "app.h"
 
+char end[100];
 /***********************************************************************************************//**
  * @addtogroup Application
  * @{
@@ -120,6 +121,7 @@ void appHandleEvents(struct gecko_cmd_packet *evt)
     case gecko_evt_le_connection_closed_id:
 
       /* Initialize app */
+
       appInit(); /* App initialization */
       htmInit(); /* Health thermometer initialization */
       advSetup(); /* Advertisement initialization */
@@ -149,7 +151,8 @@ void appHandleEvents(struct gecko_cmd_packet *evt)
     /* Indicates the changed value of CCC or received characteristic confirmation */
     case gecko_evt_gatt_server_characteristic_status_id:
       /* Check if changed client char config is for the temperature measurement */
-      if ((gattdb_temperature_measurement == evt->data.evt_gatt_server_attribute_value.attribute)
+      //if ((gattdb_temperature_measurement == evt->data.evt_gatt_server_attribute_value.attribute)
+    	if ((gattdb_heart_rate_measurement == evt->data.evt_gatt_server_attribute_value.attribute)
           && (evt->data.evt_gatt_server_characteristic_status.status_flags == 0x01)) {
         /* Call HTM temperature characteristic status changed callback */
         htmTemperatureCharStatusChange(
@@ -168,10 +171,13 @@ void appHandleEvents(struct gecko_cmd_packet *evt)
         case ADV_TIMER: /* Advertisement Timer */
           advSetup();
           break;
-        case TEMP_TIMER: /* Temperature measurement timer */
+        /*case TEMP_TIMER: Temperature measurement timer */
           /* Make a temperature measurement */
           //htmTemperatureMeasure();
-        	htmFrequencyMeasure();
+        	//htmFrequencyMeasure();
+          //break;
+        case MEAS_TIMER:
+          measTick();
           break;
         #ifndef FEATURE_IOEXPANDER
         case DISP_POL_INV_TIMER:

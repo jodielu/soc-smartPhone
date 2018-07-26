@@ -15,7 +15,7 @@
 #include "init_app.h"
 #include "ble-configuration.h"
 #include "board_features.h"
-
+#include <time.h>
 /* BG stack headers */
 #include "bg_types.h"
 #include "native_gecko.h"
@@ -23,7 +23,7 @@
 
 /* application specific files */
 #include "app.h"
-
+#include "app_timer.h"
 /* libraries containing default gecko configuration values */
 #include "em_emu.h"
 #include "em_cmu.h"
@@ -40,6 +40,7 @@
 #include "bsp.h"
 #include "bsp_trace.h"
 
+#include "adc.h"
 /***********************************************************************************************//**
  * @addtogroup Application
  * @{
@@ -73,10 +74,13 @@ static const gecko_configuration_t config = {
 #endif // (HAL_PA_ENABLE) && defined(FEATURE_PA_HIGH_POWER)
 };
 
+
+
 int main(void)
 {
+	//clock_t start;
 	// AEM (Advanced Energy Monitor) setup for energy contribution breakdown
-	BSP_TraceSwoSetup();
+	//BSP_TraceSwoSetup();
 	// Initialize device
 	initMcu();
 	// Initialize board
@@ -85,6 +89,23 @@ int main(void)
 	initApp();
 	// Initialize LEDs
 	BSP_LedsInit();
+	//start = clock();
+	//measTick();
+
+	/* Setup MCU clock to 4 MHz */
+	CMU_HFRCOFreqSet(cmuHFRCOFreq_4M0Hz);
+
+	/* Enable atomic read-clear operation on reading IFC register */
+	MSC->CTRL |= MSC_CTRL_IFCREADCLEAR;
+
+	/* Initialize RTCC */
+	rtccSetup();
+
+	/* Initialize LDMA */
+	ldmaSetup();
+
+	/* Initialize ADC */
+	adcSetup();
 
 #ifndef FEATURE_LED_BUTTON_ON_SAME_PIN
   // Configure pin as input
@@ -104,6 +125,7 @@ int main(void)
     appHandleEvents(evt);
   }
   return 0;
+
 }
 
 /** @} (end addtogroup app) */
